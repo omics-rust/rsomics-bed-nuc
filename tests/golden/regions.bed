@@ -1,0 +1,10 @@
+chr1	0	10	peak1	100	+	extra1
+chr1	5	20	peak2	200	-	extra2
+chr1	20	40	peak3	300	+	extra3
+chr1	0	60	peak4	400	+	extra4
+chr2	0	10	peak5	500	+	other1
+chr2	4	14	peak6	600	-	other2
+chr2	0	28	peak7	700	+	other3
+chr3	0	20	peak8	800	+	extra5
+chr3	10	30	peak9	900	-	extra6
+chr3	20	40	peak10	1000	+	extra7

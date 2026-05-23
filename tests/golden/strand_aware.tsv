@@ -1,0 +1,7 @@
+#1_usercol	2_usercol	3_usercol	4_usercol	5_usercol	6_usercol	7_pct_at	8_pct_gc	9_num_A	10_num_C	11_num_G	12_num_T	13_num_N	14_num_oth	15_seq_len
+chr1	0	10	name	0	+	0.500000	0.500000	3	3	2	2	0	0	10
+chr1	0	10	name	0	-	0.500000	0.500000	2	2	3	3	0	0	10
+chr1	10	20	name	0	+	0.500000	0.500000	2	2	3	3	0	0	10
+chr1	10	20	name	0	-	0.500000	0.500000	3	3	2	2	0	0	10
+chr3	0	20	name	0	+	0.500000	0.500000	5	5	5	5	0	0	20
+chr3	0	20	name	0	-	0.500000	0.500000	5	5	5	5	0	0	20
