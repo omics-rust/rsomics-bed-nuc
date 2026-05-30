@@ -1,14 +1,4 @@
-//! Per-interval nucleotide composition from FASTA + BED.
-//!
-//! Algorithm: load the indexed FASTA entirely into memory (one `Vec<u8>` per
-//! sequence, newlines stripped), then scan each BED interval in O(L) where L
-//! is the interval length. Total complexity is O(G + N·L̄) where G = genome
-//! size, N = interval count, L̄ = mean interval length.  No per-element
-//! rescan; no O(N²) pathology.
-//!
-//! Output mirrors `bedtools nuc`:
-//!   <all BED columns...>\t%AT\t%GC\t#A\t#C\t#G\t#T\t#N\t#other\tlen
-//! With optional extra columns for --seq and --pattern.
+//! Per-interval nucleotide composition from FASTA + BED (bedtools nuc equivalent).
 
 #![allow(clippy::cast_precision_loss)] // u64→f64 for pct_at/pct_gc intentional
 
@@ -20,22 +10,15 @@ use std::path::Path;
 
 use rsomics_common::{Result, RsomicsError};
 
-/// Options for `nuc`.
 #[allow(clippy::struct_excessive_bools)] // five orthogonal flags, no state machine applies
 pub struct NucOptions<'a> {
-    /// Profile sequence according to strand (reverse-complement minus strand).
     pub strand_aware: bool,
-    /// Append the extracted sequence to each output line.
     pub print_seq: bool,
-    /// Use the full FASTA header (not just the first word).
     pub full_header: bool,
-    /// Count occurrences of this exact pattern in the interval sequence.
     pub pattern: Option<&'a str>,
-    /// Match pattern case-insensitively (only effective when pattern is set).
     pub case_insensitive: bool,
 }
 
-/// Per-interval nucleotide statistics.
 pub struct NucStats {
     pub pct_at: f64,
     pub pct_gc: f64,
@@ -46,11 +29,10 @@ pub struct NucStats {
     pub num_n: u64,
     pub num_other: u64,
     pub seq_len: u64,
-    /// Pattern match count (only populated when a pattern is specified).
+    /// Only populated when a pattern is given.
     pub pattern_count: Option<u64>,
 }
 
-/// FAI entry: just enough to seek into the FASTA file.
 struct FaiEntry {
     name: String,
     length: u64,
@@ -59,7 +41,6 @@ struct FaiEntry {
     line_width: u64,
 }
 
-/// Load a `.fai` index file, returning entries in file order.
 fn read_fai(fai_path: &Path) -> Result<Vec<FaiEntry>> {
     let file = File::open(fai_path)
         .map_err(|e| RsomicsError::InvalidInput(format!("{}: {e}", fai_path.display())))?;
@@ -92,8 +73,7 @@ fn read_fai(fai_path: &Path) -> Result<Vec<FaiEntry>> {
     Ok(entries)
 }
 
-/// Load the entire FASTA into a `HashMap<name -> Vec<u8>>` using the FAI for
-/// fast seeking. Newlines are stripped; bases stored as-is (mixed case).
+/// Newlines are stripped; bases stored as-is (mixed case).
 fn load_fasta(fasta_path: &Path, fai: &[FaiEntry]) -> Result<HashMap<String, Vec<u8>>> {
     let mut file = File::open(fasta_path)
         .map_err(|e| RsomicsError::InvalidInput(format!("{}: {e}", fasta_path.display())))?;
@@ -105,8 +85,7 @@ fn load_fasta(fasta_path: &Path, fai: &[FaiEntry]) -> Result<HashMap<String, Vec
         file.seek(SeekFrom::Start(entry.offset))
             .map_err(RsomicsError::Io)?;
 
-        // Read enough raw bytes to span all sequence lines for this entry.
-        // line_width includes the newline; total raw bytes ≤ ceil(length/line_bases)*line_width.
+        // line_width includes the newline; raw bytes ≤ ceil(length/line_bases)*line_width.
         let lines = entry.length.div_ceil(entry.line_bases);
         let raw_bytes = lines * entry.line_width;
         #[allow(clippy::cast_possible_truncation)]
@@ -126,7 +105,6 @@ fn load_fasta(fasta_path: &Path, fai: &[FaiEntry]) -> Result<HashMap<String, Vec
     Ok(map)
 }
 
-/// Reverse-complement a sequence slice in place.
 fn revcomp(seq: &mut [u8]) {
     seq.reverse();
     for b in seq.iter_mut() {
@@ -140,7 +118,7 @@ fn revcomp(seq: &mut [u8]) {
     }
 }
 
-/// Count overlapping occurrences of `pattern` in `seq` (Knuth-Morris-Pratt).
+/// KMP with overlapping matches.
 fn count_pattern(seq: &[u8], pattern: &str, case_insensitive: bool) -> u64 {
     let pat: Vec<u8> = if case_insensitive {
         pattern.bytes().map(|b| b.to_ascii_uppercase()).collect()
@@ -150,7 +128,6 @@ fn count_pattern(seq: &[u8], pattern: &str, case_insensitive: bool) -> u64 {
     if pat.is_empty() || seq.len() < pat.len() {
         return 0;
     }
-    // Build KMP failure table.
     let m = pat.len();
     let mut fail = vec![0usize; m];
     let mut k = 0usize;
@@ -163,7 +140,6 @@ fn count_pattern(seq: &[u8], pattern: &str, case_insensitive: bool) -> u64 {
         }
         fail[i] = k;
     }
-    // Search, allowing overlapping matches.
     let mut count = 0u64;
     let mut q = 0usize;
     for &b in seq {
@@ -186,7 +162,6 @@ fn count_pattern(seq: &[u8], pattern: &str, case_insensitive: bool) -> u64 {
     count
 }
 
-/// Compute nucleotide stats for a single interval sequence slice.
 #[must_use]
 pub fn compute_stats(bases: &[u8], opts: &NucOptions<'_>) -> NucStats {
     let mut num_a = 0u64;
@@ -236,10 +211,7 @@ pub fn compute_stats(bases: &[u8], opts: &NucOptions<'_>) -> NucStats {
     }
 }
 
-/// Write the header line to `out`.
-///
-/// bedtools nuc prints `#1_usercol\t2_usercol\t...\tN_pct_at\t...`.
-/// Column numbering is determined by the BED column count of the first data line.
+/// bedtools nuc header: `#1_usercol\t2_usercol\t...\tN_pct_at\t...`
 fn write_header(num_bed_cols: usize, opts: &NucOptions<'_>, out: &mut impl Write) -> Result<()> {
     let col_offset = num_bed_cols + 1;
     let mut header = String::new();
@@ -273,15 +245,12 @@ fn write_header(num_bed_cols: usize, opts: &NucOptions<'_>, out: &mut impl Write
     writeln!(out, "#{header}").map_err(RsomicsError::Io)
 }
 
-/// Run `bedtools nuc` equivalent: for each BED interval, extract the FASTA
-/// subsequence and emit nucleotide composition columns.
 pub fn nuc(
     fasta_path: &Path,
     bed_path: &Path,
     opts: &NucOptions<'_>,
     out: &mut dyn Write,
 ) -> Result<()> {
-    // Require a .fai index alongside the FASTA (samtools faidx produces it).
     let fai_path = {
         let mut p = fasta_path.as_os_str().to_os_string();
         p.push(".fai");
@@ -290,7 +259,6 @@ pub fn nuc(
     let fai = read_fai(&fai_path)?;
     let genome = load_fasta(fasta_path, &fai)?;
 
-    // Length map for boundary checking (mirrors bedtools nuc stderr skip logic).
     let lengths: HashMap<&str, u64> = fai.iter().map(|e| (e.name.as_str(), e.length)).collect();
 
     let bed_file = File::open(bed_path)
@@ -316,7 +284,6 @@ pub fn nuc(
             continue;
         }
 
-        // Emit header using the column count of the first data line.
         if !header_written {
             write_header(cols.len(), opts, &mut out)?;
             header_written = true;
@@ -358,7 +325,6 @@ pub fn nuc(
 
         let stats = compute_stats(&bases, opts);
 
-        // Emit all original BED columns followed by the stat columns.
         for (i, col) in cols.iter().enumerate() {
             if i > 0 {
                 out.write_all(b"\t").map_err(RsomicsError::Io)?;
@@ -380,7 +346,6 @@ pub fn nuc(
         )
         .map_err(RsomicsError::Io)?;
         if opts.print_seq {
-            // Output the sequence as it was processed (post revcomp if -s active).
             out.write_all(b"\t").map_err(RsomicsError::Io)?;
             out.write_all(&bases).map_err(RsomicsError::Io)?;
         }

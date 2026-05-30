@@ -11,11 +11,9 @@ pub const META: ToolMeta = ToolMeta {
     version: env!("CARGO_PKG_VERSION"),
 };
 
-/// bedtools nuc uses multi-char single-dash flags (`-fi`, `-bed`, `-seq`, `-s`,
-/// `-C`, `-fullHeader`, `-pattern`); clap requires long flags, so we map:
-/// `-fi` → `--fasta`, `-bed` → `--bed`, `-s` → `--strand`,
-/// `-seq` → `--seq`, `-C` → `--case-insensitive`,
-/// `-fullHeader` → `--full-header`, `-pattern` → `--pattern`.
+/// bedtools nuc uses multi-char single-dash flags; clap requires long flags, so:
+/// `-fi`→`--fasta`, `-bed`→`--bed`, `-s`→`--strand`, `-seq`→`--seq`,
+/// `-C`→`--case-insensitive`, `-fullHeader`→`--full-header`, `-pattern`→`--pattern`.
 #[allow(clippy::struct_excessive_bools)] // five orthogonal boolean flags; no state machine applies
 #[derive(Parser, Debug)]
 #[command(
@@ -26,39 +24,31 @@ pub const META: ToolMeta = ToolMeta {
     disable_help_flag = true
 )]
 pub struct Cli {
-    /// Indexed FASTA file (must have a .fai companion — run `samtools faidx`).
-    ///
-    /// Maps to bedtools `-fi`.
+    /// Indexed FASTA file (.fai must exist alongside it; run `samtools faidx`).
     #[arg(long = "fasta", value_name = "FILE")]
     pub fasta: PathBuf,
 
     /// BED file of intervals to profile.
-    ///
-    /// Maps to bedtools `-bed`.
     #[arg(long = "bed", value_name = "FILE")]
     pub bed: PathBuf,
 
-    /// Profile according to strand: reverse-complement minus-strand intervals
-    /// before counting. Requires BED column 6. Maps to bedtools `-s`.
+    /// Reverse-complement minus-strand intervals before counting (requires BED col 6).
     #[arg(long = "strand", short = 's')]
     pub strand: bool,
 
-    /// Append the extracted (reference) sequence to each output line.
-    /// Maps to bedtools `-seq`.
+    /// Append the extracted reference sequence to each output line.
     #[arg(long = "seq")]
     pub seq: bool,
 
-    /// Use the full FASTA header (not just the first whitespace-delimited word)
-    /// when looking up sequences. Maps to bedtools `-fullHeader`.
+    /// Use the full FASTA header (not just first word) for sequence lookup.
     #[arg(long = "full-header")]
     pub full_header: bool,
 
     /// Count occurrences of this exact pattern in each interval.
-    /// Maps to bedtools `-pattern`.
     #[arg(long = "pattern", value_name = "PATTERN")]
     pub pattern: Option<String>,
 
-    /// Ignore case when matching `--pattern`. Maps to bedtools `-C`.
+    /// Match --pattern case-insensitively.
     #[arg(long = "case-insensitive", short = 'C')]
     pub case_insensitive: bool,
 
@@ -101,7 +91,7 @@ impl Tool for Cli {
 pub static HELP: HelpSpec = HelpSpec {
     name: env!("CARGO_PKG_NAME"),
     version: env!("CARGO_PKG_VERSION"),
-    tagline: "Per-interval nucleotide composition from indexed FASTA + BED — Rust port of bedtools nuc.",
+    tagline: "Per-interval nucleotide composition from indexed FASTA + BED (bedtools nuc equivalent).",
     origin: Some(Origin {
         upstream: "bedtools nuc",
         upstream_license: "MIT",
